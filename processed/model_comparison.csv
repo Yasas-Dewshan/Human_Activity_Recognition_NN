@@ -1,0 +1,4 @@
+model,val_macro_f1
+Feedforward NN,0.9765380713306223
+SVM,0.958133720881221
+Decision Tree,0.869669380889341

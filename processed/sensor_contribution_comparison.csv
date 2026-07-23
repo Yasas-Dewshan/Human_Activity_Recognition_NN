@@ -1,0 +1,4 @@
+feature_set,n_features,val_macro_f1
+All features,561,0.958133720881221
+Accelerometer-only,345,0.947762539485241
+Gyroscope-only,213,0.8143103647839031
