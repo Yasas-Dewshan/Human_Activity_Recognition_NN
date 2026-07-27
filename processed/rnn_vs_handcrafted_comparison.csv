@@ -1,0 +1,5 @@
+model,val_macro_f1
+"RNN (GRU, raw signals)",0.9929983176594828
+Feedforward NN (hand-crafted),0.9746
+SVM (hand-crafted),0.9581
+Decision Tree (hand-crafted),0.8697

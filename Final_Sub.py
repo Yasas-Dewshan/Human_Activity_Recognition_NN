@@ -86,76 +86,6 @@ def make_loader(X, y, batch_size, seed):
     return DataLoader(ds, batch_size=batch_size, shuffle=True, generator=gen)
 
 # %% [markdown]
-# ## Phase 1: train on X_tr, find optimal epoch count via early stopping on X_val
-
-# %%
-gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-tr_idx, val_idx = next(gss.split(X_train_full, y_train_encoded, groups=subjects))
-
-X_tr, X_val = X_train_full.iloc[tr_idx].values, X_train_full.iloc[val_idx].values
-y_tr, y_val = y_train_encoded[tr_idx], y_train_encoded[val_idx]
-assert len(set(subjects[tr_idx]) & set(subjects[val_idx])) == 0
-
-scaler_phase1 = StandardScaler()
-X_tr_s = scaler_phase1.fit_transform(X_tr)
-X_val_s = scaler_phase1.transform(X_val)
-X_val_t = torch.tensor(X_val_s, dtype=torch.float32).to(device)
-
-class_weights_tr = torch.tensor(
-    np.bincount(y_tr, minlength=NUM_CLASSES).sum() / (NUM_CLASSES * np.bincount(y_tr, minlength=NUM_CLASSES)),
-    dtype=torch.float32,
-).to(device)
-
-torch.manual_seed(SEED)
-model_phase1 = MLP(INPUT_DIM, NN_CONFIG["hidden_sizes"], NUM_CLASSES, NN_CONFIG["dropout"], NN_CONFIG["batchnorm"]).to(device)
-optimizer = torch.optim.Adam(model_phase1.parameters(), lr=NN_CONFIG["lr"], weight_decay=NN_CONFIG["weight_decay"])
-criterion = nn.CrossEntropyLoss(weight=class_weights_tr)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=4)
-loader = make_loader(X_tr_s, y_tr, NN_CONFIG["batch_size"], SEED)
-
-best_val_f1, best_epoch, best_state, patience_counter = -1, 0, None, 0
-MAX_EPOCHS, PATIENCE = 100, 12
-for epoch in range(MAX_EPOCHS):
-    model_phase1.train()
-    for xb, yb in loader:
-        xb, yb = xb.to(device), yb.to(device)
-        optimizer.zero_grad()
-        loss = criterion(model_phase1(xb), yb)
-        loss.backward()
-        optimizer.step()
-
-    model_phase1.eval()
-    with torch.no_grad():
-        val_f1 = f1_score(y_val, model_phase1(X_val_t).argmax(dim=1).cpu().numpy(), average="macro")
-    scheduler.step(val_f1)
-
-    if val_f1 > best_val_f1:
-        best_val_f1, best_epoch = val_f1, epoch
-        best_state = {k: v.clone() for k, v in model_phase1.state_dict().items()}
-        patience_counter = 0
-    else:
-        patience_counter += 1
-        if patience_counter >= PATIENCE:
-            break
-
-model_phase1.load_state_dict(best_state)
-print(f"Phase 1 done. Best epoch: {best_epoch} | val Macro F1: {best_val_f1:.4f}")
-
-# %% [markdown]
-# ## Interim submission (X_val standing in for test.csv until it's released)
-
-# %%
-model_phase1.eval()
-with torch.no_grad():
-    interim_preds = le.inverse_transform(model_phase1(X_val_t).argmax(dim=1).cpu().numpy())
-
-interim_ids = np.arange(1, len(X_val) + 1)
-interim_submission = pd.DataFrame({"id": interim_ids, "Activity": interim_preds})
-interim_submission.to_csv("interim_submission.csv", index=False)
-print(f"interim_submission.csv saved ({len(interim_submission)} rows, mock Macro F1 {best_val_f1:.4f}) "
-      f"-- NOT the real leaderboard file, just a demonstration until test.csv exists.")
-
-# %% [markdown]
 # ## Phase 2: retrain on ALL of train.csv for best_epoch epochs (final model)
 
 # %%
@@ -177,7 +107,8 @@ loader_final = make_loader(X_full_s, y_train_encoded, NN_CONFIG["batch_size"], S
 # epoch count Phase 1 already found to be optimal. No LR scheduler here
 # either, since it also needs a validation signal to monitor; a fixed LR
 # for this fixed, pre-validated epoch budget is a reasonable simplification.
-n_final_epochs = best_epoch + 1
+BEST_EPOCH = 41
+n_final_epochs = BEST_EPOCH + 1
 for epoch in range(n_final_epochs):
     model_final.train()
     for xb, yb in loader_final:

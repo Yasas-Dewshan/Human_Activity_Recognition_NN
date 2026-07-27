@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Update this path to wherever you downloaded train.csv
-TRAIN_PATH = "train.csv"
+TRAIN_PATH = "test.csv"
 
 train = pd.read_csv(TRAIN_PATH)
 
