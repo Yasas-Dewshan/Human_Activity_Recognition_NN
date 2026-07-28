@@ -1,8 +1,8 @@
 import pandas as pd
 
 # Load both submissions
-sub1 = pd.read_csv("submission_persubj_ensemble.csv")
-sub2 = pd.read_csv("submission_adabn.csv")
+sub1 = pd.read_csv("submission_diverse_ensemble.csv")
+sub2 = pd.read_csv("submission_weighted_ensemble.csv")
 
 # Check that IDs are aligned
 print("Same IDs:", sub1["id"].equals(sub2["id"]))
