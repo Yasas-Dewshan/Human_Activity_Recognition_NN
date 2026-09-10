@@ -1,8 +1,15 @@
+import os
 import pandas as pd
 
+def find_sub(filename):
+    for p in [os.path.join("submissions", filename), os.path.join("..", "submissions", filename), filename]:
+        if os.path.exists(p):
+            return p
+    return filename
+
 # Load both submissions
-sub1 = pd.read_csv("submission_diverse_ensemble.csv")
-sub2 = pd.read_csv("submission_weighted_ensemble.csv")
+sub1 = pd.read_csv(find_sub("submission_diverse_ensemble.csv"))
+sub2 = pd.read_csv(find_sub("submission_margin_cascade.csv"))
 
 # Check that IDs are aligned
 print("Same IDs:", sub1["id"].equals(sub2["id"]))

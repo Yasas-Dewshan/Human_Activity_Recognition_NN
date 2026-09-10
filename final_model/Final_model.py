@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pickle
 import torch
@@ -6,6 +7,16 @@ from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, classification_report, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+
+def get_dir(dirname):
+    if os.path.exists(dirname):
+        return dirname
+    parent_dir = os.path.join("..", dirname)
+    if os.path.exists(parent_dir):
+        return parent_dir
+    return dirname
+
+PROCESSED_DIR = get_dir("processed")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -25,12 +36,12 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 # Load data
-X_tr = np.load("processed/X_tr.npy")
-X_val = np.load("processed/X_val.npy")
-y_tr = np.load("processed/y_tr.npy")
-y_val = np.load("processed/y_val.npy")
+X_tr = np.load(os.path.join(PROCESSED_DIR, "X_tr.npy"))
+X_val = np.load(os.path.join(PROCESSED_DIR, "X_val.npy"))
+y_tr = np.load(os.path.join(PROCESSED_DIR, "y_tr.npy"))
+y_val = np.load(os.path.join(PROCESSED_DIR, "y_val.npy"))
 
-with open("processed/label_encoder.pkl", "rb") as f:
+with open(os.path.join(PROCESSED_DIR, "label_encoder.pkl"), "rb") as f:
     le = pickle.load(f)
 
 NUM_CLASSES = len(le.classes_)

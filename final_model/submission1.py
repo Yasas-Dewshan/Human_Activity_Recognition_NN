@@ -25,7 +25,25 @@ from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import f1_score
 
-TRAIN_PATH = "train.csv"  # update on Kaggle
+def find_path(filename, default_dir="data"):
+    for p in [os.path.join(default_dir, filename), filename, os.path.join("..", default_dir, filename), os.path.join("..", filename)]:
+        if os.path.exists(p):
+            return p
+    return os.path.join(default_dir, filename)
+
+def get_dir(dirname):
+    if os.path.exists(dirname):
+        return dirname
+    parent_dir = os.path.join("..", dirname)
+    if os.path.exists(parent_dir):
+        return parent_dir
+    os.makedirs(dirname, exist_ok=True)
+    return dirname
+
+PROCESSED_DIR = get_dir("processed")
+SUBMISSIONS_DIR = get_dir("submissions")
+
+TRAIN_PATH = find_path("train.csv")  # update on Kaggle
 
 # %% [markdown]
 # ## Part 1-2: Load & Preprocess
@@ -48,10 +66,9 @@ subj_tr = subjects[tr_idx]
 
 assert len(set(subjects[tr_idx]) & set(subjects[val_idx])) == 0  # subject leakage check
 
-os.makedirs("processed", exist_ok=True)
-with open("processed/label_encoder.pkl", "wb") as f:
+with open(os.path.join(PROCESSED_DIR, "label_encoder.pkl"), "wb") as f:
     pickle.dump(le, f)
-with open("processed/feature_cols.pkl", "wb") as f:
+with open(os.path.join(PROCESSED_DIR, "feature_cols.pkl"), "wb") as f:
     pickle.dump(feature_cols, f)
 
 print(f"Loaded. Train: {X_tr.shape}, Val: {X_val.shape}, subjects OK.")
@@ -112,16 +129,15 @@ mock_test_ids = np.arange(1, len(X_val) + 1)  # ids start at 1, matching sample_
 
 preds = le.inverse_transform(svm_submission_model.predict(X_test))
 submission = pd.DataFrame({"id": mock_test_ids, "Activity": preds})
-submission.to_csv("submission.csv", index=False)
+submission.to_csv(os.path.join(SUBMISSIONS_DIR, "submission.csv"), index=False)
 
 assert len(submission) == len(X_test)
 assert set(submission["Activity"]) <= set(le.classes_)
 assert submission["Activity"].isnull().sum() == 0
 assert list(submission.columns) == ["id", "Activity"]  # no extra columns, correct order
 
-# Structural check against sample_submission.csv (column names/order must match;
-# row count will only match once we're using real test.csv, not the mock X_val)
-sample_sub = pd.read_csv("sample_submission.csv")
+sample_sub_file = find_path("sample_submission.csv")
+sample_sub = pd.read_csv(sample_sub_file)
 assert list(submission.columns) == list(sample_sub.columns), \
     f"Column mismatch: {list(submission.columns)} vs {list(sample_sub.columns)}"
 

@@ -31,9 +31,27 @@ from sklearn.metrics import f1_score
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-TRAIN_PATH = "train.csv"  # update on Kaggle
-TEST_PATH = "test.csv"    # update once available
-SAMPLE_SUB_PATH = "sample_submission.csv"  # update to its actual location
+def find_path(filename, default_dir="data"):
+    for p in [os.path.join(default_dir, filename), filename, os.path.join("..", default_dir, filename), os.path.join("..", filename)]:
+        if os.path.exists(p):
+            return p
+    return os.path.join(default_dir, filename)
+
+def get_dir(dirname):
+    if os.path.exists(dirname):
+        return dirname
+    parent_dir = os.path.join("..", dirname)
+    if os.path.exists(parent_dir):
+        return parent_dir
+    os.makedirs(dirname, exist_ok=True)
+    return dirname
+
+PROCESSED_DIR = get_dir("processed")
+SUBMISSIONS_DIR = get_dir("submissions")
+
+TRAIN_PATH = find_path("train.csv")
+TEST_PATH = find_path("test.csv")
+SAMPLE_SUB_PATH = find_path("sample_submission.csv")
 
 NN_CONFIG = {
     "hidden_sizes": [256, 128],
@@ -120,14 +138,14 @@ for epoch in range(n_final_epochs):
 
 print(f"Phase 2 done. Trained final model on all {len(train)} rows for {n_final_epochs} epochs.")
 
-torch.save(model_final.state_dict(), "processed/nn_final_model.pt")
-with open("processed/nn_scaler.pkl", "wb") as f:
+torch.save(model_final.state_dict(), os.path.join(PROCESSED_DIR, "nn_final_model.pt"))
+with open(os.path.join(PROCESSED_DIR, "nn_scaler.pkl"), "wb") as f:
     pickle.dump(scaler_final, f)
-with open("processed/label_encoder.pkl", "wb") as f:
+with open(os.path.join(PROCESSED_DIR, "label_encoder.pkl"), "wb") as f:
     pickle.dump(le, f)
-with open("processed/feature_cols.pkl", "wb") as f:
+with open(os.path.join(PROCESSED_DIR, "feature_cols.pkl"), "wb") as f:
     pickle.dump(feature_cols, f)
-print("Saved final model + scaler to processed/")
+print(f"Saved final model + scaler to {PROCESSED_DIR}/")
 
 # %% [markdown]
 # ## Real submission -- uses test.csv if present, else skips with a clear note
@@ -145,7 +163,7 @@ if os.path.exists(TEST_PATH):
 
     test_ids = test["id"] if "id" in test.columns else np.arange(1, len(test) + 1)
     submission = pd.DataFrame({"id": test_ids, "Activity": preds_labels})
-    submission.to_csv("submission.csv", index=False)
+    submission.to_csv(os.path.join(SUBMISSIONS_DIR, "submission.csv"), index=False)
 
     assert len(submission) == len(test)
     assert set(submission["Activity"]) <= set(le.classes_)

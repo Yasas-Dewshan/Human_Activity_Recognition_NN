@@ -21,9 +21,27 @@ device = torch.device(
 print(f"Using device: {device}")
 
 
-TRAIN_PATH = "train.csv"
-TEST_PATH = "test.csv"
-SAMPLE_SUB_PATH = "sample_submission.csv"
+def find_path(filename, default_dir="data"):
+    for p in [os.path.join(default_dir, filename), filename, os.path.join("..", default_dir, filename), os.path.join("..", filename)]:
+        if os.path.exists(p):
+            return p
+    return os.path.join(default_dir, filename)
+
+def get_dir(dirname):
+    if os.path.exists(dirname):
+        return dirname
+    parent_dir = os.path.join("..", dirname)
+    if os.path.exists(parent_dir):
+        return parent_dir
+    os.makedirs(dirname, exist_ok=True)
+    return dirname
+
+PROCESSED_DIR = get_dir("processed")
+SUBMISSIONS_DIR = get_dir("submissions")
+
+TRAIN_PATH = find_path("train.csv")
+TEST_PATH = find_path("test.csv")
+SAMPLE_SUB_PATH = find_path("sample_submission.csv")
 
 
 TRAIN_CONFIG = {
@@ -511,7 +529,7 @@ for config in MODEL_CONFIGS:
 
         torch.save(
             model.state_dict(),
-            f"processed/{config['name']}_seed_{seed}.pt"
+            os.path.join(PROCESSED_DIR, f"{config['name']}_seed_{seed}.pt")
         )
 
 
@@ -521,7 +539,7 @@ print(
 
 
 with open(
-    "processed/label_encoder.pkl",
+    os.path.join(PROCESSED_DIR, "label_encoder.pkl"),
     "wb"
 ) as f:
 
@@ -532,7 +550,7 @@ with open(
 
 
 with open(
-    "processed/feature_cols.pkl",
+    os.path.join(PROCESSED_DIR, "feature_cols.pkl"),
     "wb"
 ) as f:
 
@@ -540,24 +558,37 @@ with open(
         feature_cols,
         f
     )
+# =====================================
+# Generate final submission
+# =====================================
 
-# =====================================
-# Weighted ensemble submission
-# =====================================
 
 if os.path.exists(TEST_PATH):
 
     test = pd.read_csv(TEST_PATH)
 
-    assert "subject" in test.columns
 
-    X_test = test[feature_cols].values
-    test_subjects = test["subject"].values
+    assert "subject" in test.columns, (
+        "test.csv must contain subject column "
+        "for per-subject normalization"
+    )
+
+
+    X_test = test[
+        feature_cols
+    ].values
+
+
+    test_subjects = test[
+        "subject"
+    ].values
+
 
     X_test_norm = per_subject_normalize(
         X_test,
         test_subjects
     )
+
 
     X_test_t = torch.tensor(
         X_test_norm,
@@ -565,61 +596,33 @@ if os.path.exists(TEST_PATH):
     ).to(device)
 
 
-    # Model weights
-    architecture_weights = {
-        "256_128": 0.60,
-        "512_128": 0.15,
-        "256_256_64": 0.15,
-        "512_256_128": 0.10
-    }
+
+    all_probs = []
 
 
-    weighted_probs = []
-    total_weight = 0
+    for model in ensemble_models:
+
+        model.eval()
+
+        with torch.no_grad():
+
+            probs = torch.softmax(
+                model(X_test_t),
+                dim=1
+            ).cpu().numpy()
 
 
-    model_index = 0
+        all_probs.append(
+            probs
+        )
 
 
-    for config in MODEL_CONFIGS:
+    # Average predictions from all architectures and seeds
 
-        weight = architecture_weights[
-            config["name"]
-        ]
-
-
-        for seed in SEEDS:
-
-            model = ensemble_models[
-                model_index
-            ]
-
-            model.eval()
-
-            with torch.no_grad():
-
-                probs = torch.softmax(
-                    model(X_test_t),
-                    dim=1
-                ).cpu().numpy()
-
-
-            weighted_probs.append(
-                probs * weight
-            )
-
-
-            total_weight += weight
-
-            model_index += 1
-
-
-
-    avg_probs = np.sum(
-        weighted_probs,
+    avg_probs = np.mean(
+        all_probs,
         axis=0
-    ) / total_weight
-
+    )
 
 
     preds = avg_probs.argmax(
@@ -650,14 +653,56 @@ if os.path.exists(TEST_PATH):
     )
 
 
+    submission_out_path = os.path.join(SUBMISSIONS_DIR, "submission_diverse_ensemble.csv")
     submission.to_csv(
-        "submission_weighted_ensemble.csv",
+        submission_out_path,
         index=False
     )
 
 
+    assert len(submission) == len(test)
+
+    assert set(
+        submission["Activity"]
+    ) <= set(
+        le.classes_
+    )
+
+    assert submission[
+        "Activity"
+    ].isnull().sum() == 0
+
+
+
+    try:
+
+        sample_sub = pd.read_csv(
+            SAMPLE_SUB_PATH
+        )
+
+
+        assert list(
+            submission.columns
+        ) == list(
+            sample_sub.columns
+        )
+
+
+        print(
+            "Column structure matches sample_submission.csv."
+        )
+
+
+    except FileNotFoundError:
+
+        print(
+            "sample_submission.csv not found."
+        )
+
+
+
     print(
-        "submission_weighted_ensemble.csv saved"
+        "submission_diverse_ensemble.csv saved."
     )
 
     print(
@@ -666,7 +711,7 @@ if os.path.exists(TEST_PATH):
 
 
     print(
-        "\nPredicted distribution:"
+        "\nPredicted class distribution:"
     )
 
     print(
@@ -677,5 +722,5 @@ if os.path.exists(TEST_PATH):
 else:
 
     print(
-        "test.csv not found"
+        f"test.csv not found at {TEST_PATH}"
     )
